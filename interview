@@ -1,0 +1,1476 @@
+## -------------------------Java基础------------------------
+
+### 1.Java面向对象的特征 （讲为什么要有这些特征）
+
+封装，继承可以增加代码的复用性，多态可以增加代码的灵活性，健壮性
+
+### 2.ArrayList和LinkedList的区别(讲插入，删除，访问)
+
+### 3.什么时候使用接口和抽象类
+
+描述特征使用接口，描述概念使用抽象类
+
+### 4.美团7连问![image-20220202194338667](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20220202194338667.png)
+
+7.16个字节
+
+4.markword，classpointer，主要包含锁信息，hashcode，gc的信息
+
+3.内存布局
+
+![image-20220202215531788](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20220202215531788.png)
+
+![image-20220202220144433](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20220202220144433.png)
+
+![image-20220202225655405](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20220202225655405.png)
+
+![image-20220202230603591](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20220202230603591.png)
+
+```java
+// 由单例模式->懒汉式->多线程->Double Check Lock->由对象的创建过程new ,invokespecial,astore->对象创建过程发生指令重排->volatile
+class Mgr {
+    private static volatile Mgr INSTANCE;
+    private Mgr() {}
+    public static Mgr getInstance() {
+        if (INSTANCE == null) {
+            synchronized (Mgr.class) {
+                if (INSTANCE == null) {
+                    INSTANCE = new Mgr();
+                }
+            }
+        }
+        return INSTANCE;
+    }
+}
+```
+
+### 5.哲学家进餐问题(思路：混进一半左撇子，既先抢左边的，得到左边的再抢右边的)
+
+```java
+class ChocpStick {}
+class Philosohper extends Thread {
+    private ChocpStick left;
+    private ChocpStick right;
+    private int index;
+    public Philosohper(String name, int index, ChocpStick left, ChocpStick right) {
+        this.setName(name);
+        this.index = index;
+        this.left = left;
+        this.right = right;
+    }
+    @Override
+    public void run() {
+        if (index % 2 == 0) {
+            synchronized (left) {
+                try {
+                    Thread.sleep(1 + index);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                synchronized (right) {
+                    try {
+                        Thread.sleep(1 + index);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                    System.out.println(index + "号 哲学家已经吃完");
+                }
+            }
+        } else {
+            synchronized (right) {
+                try {
+                    Thread.sleep(1 + index);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                synchronized (left) {
+                    try {
+                        Thread.sleep(1 + index);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                    System.out.println(index + "号 哲学家已经吃完");
+                }
+            }
+        }
+    }
+}
+```
+
+### 6.实现交替输出（利用synchronized，wait，notify或者利用ReentranceLock）
+
+![image-20220203230944701](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20220203230944701.png)
+
+```java
+class Mrg {
+    private static Object o = new Object();
+    public static void main(String[] args) {
+        char[] a1 = "123456".toCharArray();
+        char[] a2 = "ABCDEF".toCharArray();
+        new Thread(() -> {
+            synchronized (o) {
+                for (char c : a1) {
+                    System.out.print(c);
+                    o.notify();
+                    try {
+                        o.wait();
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+                o.notify();
+            }
+        }, "t1").start();
+
+        new Thread(() -> {
+            synchronized (o) {
+                for (char c : a2) {
+                    System.out.print(c);
+                    o.notify();
+                    try {
+                        o.wait();
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+                o.notify(); // 防止最后一步输出完了不去唤醒，导致程序停止不了
+            }
+        }, "t2").start();
+    }
+}
+```
+
+利用CountDownLatch实现指定数字还是字母输出先
+
+```java
+class Mrg {
+    private static Object o = new Object();
+    private static CountDownLatch latch = new CountDownLatch(1);
+    public static void main(String[] args) {
+        char[] a1 = "123456".toCharArray();
+        char[] a2 = "ABCDEF".toCharArray();
+        new Thread(() -> {
+            try {
+                latch.await();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            synchronized (o) {
+                for (char c : a1) {
+                    System.out.print(c);
+                    o.notify();
+                    try {
+                        o.wait();
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+                o.notify();
+            }
+        }, "t1").start();
+
+        new Thread(() -> {
+            synchronized (o) {
+                for (char c : a2) {
+                    System.out.print(c);
+                    latch.countDown();
+                    o.notify();
+                    try {
+                        o.wait();
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+                o.notify(); // 防止最后一步输出完了不去唤醒，导致程序停止不了
+            }
+        }, "t2").start();
+    }
+}
+```
+
+#### 7.生产者和消费者(注意while不能改成if，原因是在被唤醒之后还需要判断篮子里面时候已经满或者空所以需要while)
+
+```java
+class Mrg {
+
+    private static int count = 0;
+
+    private int maxNum = 3;
+
+    private ReentrantLock lock = new ReentrantLock();
+
+    Condition producerCondition = lock.newCondition();
+
+    Condition consumerCondition = lock.newCondition();
+
+    public static void main(String[] args) {
+        Mrg mrg = new Mrg();
+        new Thread(mrg.new Producer()).start();
+        new Thread(mrg.new Consumer()).start();
+    }
+
+    class Producer implements Runnable {
+        @Override
+        public void run() {
+            for (int i = 0; i < 5; i++) {
+                lock.lock();
+                while (count >= maxNum) {
+                    try {
+                        producerCondition.await();
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+                count++;
+                System.out.println(Thread.currentThread().getName() + "生产者生产， 目前总共有" + count);
+                consumerCondition.signalAll();
+                lock.unlock();
+            }
+        }
+    }
+
+    class Consumer implements Runnable {
+        @Override
+        public void run() {
+            for (int i = 0; i < 5; i++) {
+                lock.lock();
+                while (count <= 0) {
+                    try {
+                        consumerCondition.await();
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+                count--;
+                System.out.println(Thread.currentThread().getName() + "消费者消费， 目前总共有" + count);
+                producerCondition.signalAll();
+                lock.unlock();
+            }
+        }
+    }
+}
+```
+
+### 7.String,Stringbuffer,StringBuilder的区别(一个是不可变的，追加的话地址就变了，另外两个是地址可变的，底层是数组，会进行扩容，+是不断的创建对象，原先的对象会被回收)
+
+### 8.怎样定义一个类不被继承，利用final修饰Math就是一个例子
+
+### 9.volatile（轻量级的同步机制，保持可见性，不保证原子性，禁止指令重排）
+
+可见性:![image-20220204210514701](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20220204210514701.png)
+
+不保证原子性可以从number++这个看出，当多线程对number++进行操作时，加volatile没有用，number++看字节码有好几行代码。解决使用AtomicInteger定义变量
+
+### 10.CAS（Compare And Swap 这个问题由AtomicInteger为什么可以让变量num++是一个原子操作）
+
+注意CAS不是compareAndSet，compareAndSet底层也是调用了compareAndSwapInt利用了自旋锁
+
+num.getAndIncrement底层使用了unsafe类（是一个可以操作内存地址的类，大多数都是native修饰）
+
+```java
+public final int getAndIncrement() {
+    return unsafe.getAndAddInt(this, valueOffset, 1);
+}
+public final int getAndAddInt(Object var1, long var2, int var4) {
+       int var5;
+       do {
+            var5 = this.getIntVolatile(var1, var2); // 获取内存中的变量值
+        } while(!this.compareAndSwapInt(var1, var2, var5, var5 + var4)); // 这里使用了自旋锁
+		// var1, var2 这里的是指内存中的值 var2是内存地址，var5相当于副本,每个线程都有自己的线程内存
+        return var5;
+    }
+```
+
+CAS问题会导致ABA问题，就是CAS只和内存进行比较，并不知道内存的值已经修改过了，但又恢复原样
+
+- CAS是利用硬件来实现的，实际上CAS就是一个操作系统的原语，不可分割的执行过程，利用CPU的cmpxchg指令来实现的。
+
+### 11.ABA问题的解决，利用AtomicStampedReference来进行标记，即对数据添加版本号，每次对内存中的数据进行修改的时候，都需要进行修改值和比较版本号。
+
+```java
+class Mrg {
+    public static void main(String[] args) {
+        AtomicStampedReference<Integer> reference = new AtomicStampedReference<>(100, 1);
+        new Thread(() -> {
+            reference.compareAndSet(100, 500, 1, 2);
+            reference.compareAndSet(500, 100, 2, 3);
+        }, "t1").start();
+        new Thread(() -> {
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            System.out.println(reference.compareAndSet(100 , 2022, 1, 2));
+        }, "t2").start();
+     }
+}
+```
+
+### 12.Class初始化过程
+
+​											链接(准备是对静态属性进行赋初始值，解析是将符号引用转变为直接引用)
+
+类加载的过程是 加载-> (验证->准备->解析)->初始化->使用->卸载，每一个类都有一个初始化锁，当前线程获得到这把锁之后呢，在进行初始化的时候先初始化该类的父类，然后再初始化静态变量，静态代码块，成员变量，构造代码块，最后调用构造方法.
+
+### 13.concurrentHashMap的底层原理
+
+![image-20220205210526693](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20220205210526693.png)
+
+jdk1.8开始废弃了segment，然后hashEntry也没了，改成Node节点，加入了红黑树，然后锁的力度也更小了，是对Node进行上锁.
+
+### 14.GC如何判断对象可以被回收
+
+![42ec47f4e7570082fefffecd48aeef6](C:\Users\ADMINI~1\AppData\Local\Temp\WeChat Files\42ec47f4e7570082fefffecd48aeef6.png)
+
+![a38e68d50aee79642e679d1c407e855](C:\Users\ADMINI~1\AppData\Local\Temp\WeChat Files\a38e68d50aee79642e679d1c407e855.png)
+
+### 15.类加载器有那些
+
+![image-20220205233604184](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20220205233604184.png)
+
+引导类加载器加载jvm自身所需要的类
+
+### 16.jvm8为什么使用元空间替代持久代
+
+![e962575510b66296ade52204cf2654c](C:\Users\ADMINI~1\AppData\Local\Temp\WeChat Files\e962575510b66296ade52204cf2654c.png)![e0e6d4f426770f726e89ca10ce3fc4a](C:\Users\ADMINI~1\AppData\Local\Temp\WeChat Files\e0e6d4f426770f726e89ca10ce3fc4a.png)
+
+### 17.JVM内存模型如何分配的
+
+<img src="C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20220206223559863.png" alt="image-20220206223559863" style="zoom:200%;" />
+
+注意一下虚拟机栈中的栈帧里面存在局部变量表，操作数栈,动态链接是为了调用元数据中的数据
+
+### 18.垃圾回收器有那些
+
+![image-20220206230432439](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20220206230432439.png)
+
+serial使用的是复制算法，serial old使用的是标记-整理算法，cms（concurrent mark sweep）使用的是标记清除算法，会产生内存碎片，是一种获得最短回收时间的垃圾回收器。parnew是一种并行的垃圾回收器，也会产生Stop The World,。G1是一种介于新生代和老年代之间的垃圾回收器，利用多核CPU，还有硬件设备来尽可能的缩短Stop The World的时间,并且不会产生内存碎片
+
+### 19.synchronized和lock的区别
+
+![image-20220207203330088](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20220207203330088.png)
+
+Lock可以在锁上创建阻塞队列condition，实现不同的线程放到不同的阻塞队列中。
+
+### 20.线程池的七大参数有哪些
+
+```java
+@Bean
+public ThreadPoolExecutor threadPoolExecutor() {
+    return new ThreadPoolExecutor(
+            20,
+            200,
+            10,
+            TimeUnit.SECONDS,
+            new LinkedBlockingDeque<>(100),
+            Executors.defaultThreadFactory(),
+            new ThreadPoolExecutor.AbortPolicy()
+    );
+}
+```
+
+### 21.程序使用多少线程合适（CPU密集型和IO密集型）
+
+cpu密集型需要的线程数少，设置线程数量等于cpu核心数量，io密集型需要大量线程，一般需要2N +1个线程，N为cpu的核心数
+
+### 22.线程和进程的区别
+
+进程是一个在内存中运行的应用程序，而线程是进程中的一个执行任务，进程是操作系统进行资源分配的基本单位，线程是CPU进行调度执行的基本单位，然后对于一个进程至少有一个线程，线程之间是共享该进程内存资源的。
+
+### 23。创建线程的几种方式（外加实现callable接口和FutureTask连用，ThreadPoolExecutor）
+
+### 24.线程的生命周期和状态
+
+![image-20220207212703268](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20220207212703268.png)
+
+### 25.如何预防死锁
+
+![989c1af26d34b9a2f07f0cc7e7506a8](C:\Users\ADMINI~1\AppData\Local\Temp\WeChat Files\989c1af26d34b9a2f07f0cc7e7506a8.png)
+
+
+
+### 26.什么是守护线程
+
+![image-20220207220130181](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20220207220130181.png)
+
+### 27.双亲委派机制（加载一个类由父类加载，好处避免重复加载，安全,继承ClassLoader类重写loadClass方法进行打破,）
+
+### 28.为什么要使用线程池
+
+![image-20220207231426873](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20220207231426873.png)
+
+### 29.yield方法
+
+![image-20220207232342856](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20220207232342856.png)
+
+### 21线程池有哪几类
+
+1.FixedThreadPool
+
+2.CachedThreadPool
+
+3.SingleThreadPool
+
+4.ScheduledThreadPool
+
+### 22.为什么hashmap中节点个数达到8就变红黑树？
+
+当我们采取正确的hash算法的时候呢，会让我们节点分布的均匀，符合概率学中的泊松分布，在泊松分布中，当个桶的节点个数达到8的概率为0.000006，几乎是不可能的，所以就把个数达到8作为阈值，是根据概率统计得出来的.
+
+### 23.什么时候需要重写hashcode和equals方法？
+
+在将自定义类型作为hashmap中的key的时候就需要重写，若不重写创建的两个属性一样的对象就会被视为不同的对象.
+
+### 24.HashMap的底层扩容原理和rehash？
+
+在进行创建完hashmap后，会有一个数组，当这个数组里面的元素达到了数组长度*负载因子后就会进行扩容，变成原来的两倍，然后将红黑树转链表，rehash就是当我扩容后，对桶里面的元素进行重新分配。
+
+### 25.HashSet如何查重?
+
+首先计算出key 的hash值，然后得到该key的位置，然后判断该位置的key和新加进来的key是否一样，一样的话则进行覆盖。
+
+### 26.AQS源码？
+
+由ReentrantLock为例子，lock.lock()底层实际上是调用它的内部类sync.lock(), 这个sync继承了AbstractQueuedSynchronizer这个抽象队列同步器，然后lock方法有公平锁和非公平锁的实现，AQS中利用state进行标记，若为1则说明该线程抢到锁了，为0则没有，lock方法中先是compareAndSetState，然后将其独占锁，若其他线程抢不到锁则执行acquire方法--acquire中有tryAcquire方法---addWaiter方法---acquireQueued方法，抢不到锁的线程首先会尝试去获得锁，获取不到就加入到队列中，并且如果是开始的时候，会初始化一个Node类型的节点，里面的参数Thread为空，然后将我被阻塞的线程挂到这个前置Node节点，然后执行acquireQueued里面的shouldParkAfterFailedAcquire设置前置节点的waitStatus将其改为-1再来执行parkAndCheckInterrupt里面的LockSupport.park暂停线程
+
+若是lock.unlock则执行sysn.release()方法,接着执行unparkSuccessor方法，执行LockSupport.unpark()方法
+
+### 27.ArrayList线程不安全如何解决？（ConcurrentModificationException）
+
+使用vector，Collections.sysnchronizedList()，CopyOnWriteArrayList（）
+
+### 28.可重入锁（ReentantLock / Sysnchronized）
+
+所谓可重入锁就是对于一个线程获得锁后，该线程所有的代码块都能获得锁，就是说一个同步方法里面又有同步方法，那么这两个同步方法共用的是同一把锁
+
+### 29.原子引用实现自旋锁
+
+```java
+class Main0 {
+    private static AtomicReference<Thread> reference = new AtomicReference<>();
+    public static void lock(Thread thread) {
+        while (!reference.compareAndSet(null, thread)) {
+            System.out.println(Thread.currentThread().getName() + "阻塞");
+        }
+        System.out.println(Thread.currentThread().getName() + "上锁");
+    }
+    public static void unLock(Thread thread) {
+        if (reference.compareAndSet(thread, null)) {
+            System.out.println(Thread.currentThread().getName() + "解锁");
+        }
+    }
+    public static void main(String[] args) {
+        new Thread(() -> {
+            lock(Thread.currentThread());
+            System.out.println("执行业务1");
+            unLock(Thread.currentThread());
+        }, "t1").start();
+        new Thread(() -> {
+            lock(Thread.currentThread());
+            System.out.println("执行业务2");
+            unLock(Thread.currentThread());
+        }, "t2").start();
+    }
+}
+```
+
+### 30.线程池的拒绝策略（4种）
+
+```
+AbortPolicy 抛出异常
+DiscardPolicy 直接抛弃多余线程
+DiscardOldestPolicy 抛弃等待最久的线程
+CallerRunsPolicy 多余的线程会回退到调度者，就是在main线程中开启线程池，然后多余的线程就回到main进行处理
+```
+
+### 31.锁升级
+
+偏向锁---轻量级锁---重量级锁
+
+当第一个线程获得锁时，会把这个线程的ID加入到对象头中，当其他线程过来的时候，抢不到这把锁就会进行自旋，变成了轻量级锁，再自旋次数达到一定的时候就会升级成重量级锁进入阻塞状态。
+
+### 32.CountDownLatch和CyclicBarrier的区别是？
+
+CountDownLatch就是等待所有线程都执行完毕，再接着往下走。王者进入游戏
+
+CyclicBarrier是等所有线程到我阻塞的位置，才开始往下走, 或者是说玩家都达到相同的状态才往下走。
+
+互为使用差不多
+
+### 33.JUC下都有那些类？
+
+AtomicInteger，AtomicReference，AtomicStampedReference, Lock, ReentranLock, AbstractQueuedSynchronizer
+
+ConcurrentHashMap, CopyOnWriteArrayList, CountDownLatch, CyclicBarrier, Semaphore。
+
+### 34. 静态代理和动态代理的区别？
+
+静态代理是由程序员手动的创建代理类，动态代理是是再运行的过程中利用反射机制创建代理类。
+
+### 35.关于equals和hashcode方法？
+
+重写equals方法需要注意的是自反性，对称性，传递性等，equals方法重写了就一定要重写hashcode方法，不然会出现set集合存储重复的元素，因为hashcode会认为他们是不同的对象，是我们自己逻辑上认为他们是相同的，hashcode就是利用hash函数给对象计算出来的值。
+
+### 36.HashTable和HashMap的区别？
+
+- 继承的父类不一样，HashTable继承的是Dictionary，而HashMap继承的是AbstractMap
+- 线程的安全性
+- 对key和value的支持不一样，hashtable不支持null的key和value，否则空指针异常。
+
+### 37.ConcurrentHashMap和HashTable的区别？
+
+- HashTable是通过synchronized关键字进行枷锁的，用的锁是当前对象，也就是说一个线程得到这把锁，其他的线程只能进入阻塞状态。
+- ConcurrentHashMap是将数据分段进行存储的，每一段都有不同的锁，锁的力度小了，对于读操作，是不需要进行枷锁的，对于写操作枷锁也仅仅是对某一段来枷锁，其他段的数据不受影响。
+
+### 38.能否在迭代List的过程中使用remove方法？
+
+- 不能，会爆ConcurrentModificationException ,ArrayList里面有个modCount用来记录对这个list的修改次数，在迭代的过程中需要调用next方法，next方法中有个checkForComodification里面判断了modCount和预期的modCount是否相同，不同就抛异常，解决方法是使用CopyOnWriteArrayList,不对原list进行操作，而是通过复制一个新的list进行追加然后再修改引用。
+
+  
+
+### 39.为什么hashMap的容量都是2的幂次方?
+
+- 2的幂次方有个特点就是减1之后低位全是零，通过看源码知道是key在hashmap中使用的是（n-1）&hash值来计算索引的，这个和直接利用hash % n得到的结果是一样的，现在使用了&运算，使得运算更快，然后也不会超出容量n。
+
+## ----------------------------------------JVM-------------------------------------------
+
+### 1.那些对象可以作为GCROOT？
+
+方法区中的静态变量，方法区中的常量，虚拟机栈的局部变量，本地方法栈的引用
+
+### 2.JVM的参数类型？(联合jps -l   还有 jinfo  -flag   xxxx   进程号)
+
+XX类型， -XX:+PrintGcDetails
+
+-Xms ==-XX:initialHeapSize
+
+-Xmx == -XX:MaxHeapSize
+
+### 3.查看jvm系统默认值
+
+java -XX:+PrintFlagsInitial
+
+java -XX:+PrintFlagsFinal
+
+java -XX:+PrintCommandLineFlags 查看关键设置
+
+### 4.java虚拟机的初始内存为本地内存的64分之1，最大内存为本地内存的4分之1
+
+### 5.调整eden和from、to的比例大小
+
+-XX:SurvivorRatio=4, 默认是8 : 1 : 1
+
+### 6.调整新生代和老年代的比例大小
+
+-XX:NewRatio=2 默认是1 : 2
+
+### 7.调整从新生代到老年代的年龄大小
+
+-XX:MaxTenuringThreshold=15 (最大为15)
+
+### 8.强，软，弱，虚引用
+
+强引用就是不管有没有发生OOM都不进行回收
+
+软引用就是SoftReference，当发生了OOM就进行垃圾回收
+
+弱引用就是WeakReference, 不管有没有发生OOM只要进行GC就回收
+
+虚引用只能和引用队列使用referenceQueue，而不能单独使用，PhantomReference.get()方法总是null
+
+在进行gc之前会把虚引用指向的对象内存地址放到引用队列中.
+
+### 9.java中常见的报错信息
+
+java.lang.StackOverFlowError
+
+java.lang.OutOfMemoryError: java heap space
+
+java.lang.OutOfMemoryError: GC overhead limit exceeded === 这个是由于不断的GC，但是GC产生的空闲的空间不明显
+
+就是98%的资源用来作GC，很少资源作为实际工作  -Xmx12m -XX:+UseParallelGC -XX:+PrintGCDetails
+
+java.lang.OutOfMemoryError: Direct buffer memory 直接内存溢出 ，就是说创建对象不是用的jvm的内存，而是用了直接内存，一个java应用进程有jvm内存和直接内存，两者相加得到物理内存的4分之1，ByteBuffer.allocateDirect(6 * 1024 * 1024);
+
+java.lang.OutOfMemoryError: Metaspace , 不断加载类信息
+
+### 10.常见的垃圾回收器?
+
+1.Serial 串行的垃圾回收器，当发生GC的时候程序会暂停，只有一个GC线程
+
+2.Parllel 并行的垃圾回收器，这个相对与Serial有多个垃圾回收线程，当发生垃圾回收的时候，会STW
+
+3.CMS 并发的垃圾回收器，用户程序和GC线程并发的进行垃圾回收，也会发生STW，时间较短
+
+4.G1垃圾回收器，将堆内存分为大小一块一块的，然后并发进行垃圾回收.
+
+### 11.垃圾回收器的再细化?
+
+新生代使用Serial垃圾回收器，老年代使用SerialOld垃圾回收器，一般新生代都是复制算法，老年代是标记整理，除了CMS使用的是标记清除
+
+新生代使用ParNew垃圾回收器，老年代推荐使用CMS垃圾回收器。但是默认使用的是SerialOld垃圾回收器
+
+新生代使用ParallelScavenge （Parallel）老年代使用的是ParallelOld，这个是高吞吐量，就是程序的运行时间 / 程序的运行时间 + 垃圾回收的时间。
+
+对于CMS，在老年代设置之后，新生代会自动设置成ParNew垃圾回收器，CMS有四个阶段，初始标记（发生STW，标记那些GCROOT，时间快） == 并发标记（从GCROOT开始将所有可达的对象进行标记）=== 重新标记（发生STW，原因是用户程序在运行的过程中可能对象的关系会变化，所以需要重新标记） === 并发清理 ,CMS的优点就是响应时间快，常用于B/S架构中，缺点就会CPU的压力大，采用的是标记清除算法，会产生内存碎片。
+
+G1垃圾回收器，将堆内存划分为大小一块一块的区域，整体使用的是标记整理算法，局部使用的是复制算法，相比CMS不会产生内存碎片，并且STW的时间更短，和CMS一样有四个过程，初始标记，并发标记，重新标记，并发清理,可以指定预期的停顿时间。
+
+### 12.微服务的调优
+
+将jar包搞好后，利用命令java -server -Xms10 (jvm调优命令) -jar jar包
+
+### 13.元空间和方法区的区别？
+
+元空间是方法区的实现，方法区是一个抽象的概念
+
+### 14.如何保证变量线程私有?
+
+使用ThreadLocal
+
+### 15.minorGC 和FullGC过程？
+
+首先新创建的对象存放在eden，当eden区满了，就会把存活的对象放到s0，将eden区清空，然后下一次又满了的话将eden区和s0区的存活对象放到s1区，同时之前的s0区的对象年龄++，下一次又满了就把存活的对象放到s0区，同时之前的s1区的对象年龄++，在存活对象移动的过程中，移到另一边，之前的是全部要清空的。
+
+FullGC是针对与堆的，每次发生minorGC都会使得对象的年龄增长，到达一定年龄后就会进入老年代，然后老年代满了的话，就发生FullGC
+
+
+
+## ------------------------------Mysql---------------------------
+
+### 1.MySQL的隔离级别
+
+读未提交    有脏读，不可重复读，幻读
+
+读已提交  有不可重复读，幻读
+
+可重复读   有幻读 （Mysql的默认隔离级别，利用MVCC来解决）
+
+串行化读 都没有
+
+脏读是说数据写入硬盘前是先在内存中进行修改，然后再写入，两个事务，事务1读取到了事务2修改但未提交的数据
+
+不可重复读说事务A第一次读取的数据和第二次读取的数据不一致，原因是因为另一个事务在这个过程中进行了修改并提交了
+
+幻读是说事务A第一次查到的数据量和第二次查到的数据量不一致，原因是另一个事务在这个过程中进行了插入并提交了。
+
+### 2.MySQL的复制原理
+
+![image-20220208201600224](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20220208201600224.png)
+
+（注意主库会给每一个从库创建一个输出binlog内容的线程，而每一个从库都会有一个I/O线程和一个SQL线程）
+
+### 3.MySQL为什么要进行主从复制
+
+![image-20220208223608628](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20220208223608628.png)
+
+### 4.什么是MySQL的主从复制
+
+![image-20220208224751589](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20220208224751589.png)
+
+### 5.索引的好处，索引的缺点
+
+好处就是检索，数据的唯一性，缺点就是创建时候需要时间，过多会占用物理空间
+
+### 6.聚簇索引和非聚簇索引的区别
+
+![image-20220220233956601](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20220220233956601.png)
+
+### 7.幻读现象(给select加排他锁)
+
+![image-20220221000537804](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20220221000537804.png)
+
+### 8.索引失效
+
+1.or查询的时候两边没有都是用索引
+
+2.字段类型转换导致不能使用索引
+
+3.%like查询的时候不能使用索引
+
+### 9.如何找到慢sql
+
+首先查看mysql语句，发现使得索引失效的语句就是慢sql，还有利用mysql的分析诊断工具mysql profile和mysql explain
+
+### 10.联合索引如何存储？
+
+联合索引和普通索引一样，也是利用B+树来进行存储的，所谓回表就是在辅助索引树上找到主键Id，然后再去主索引树上面找。索引覆盖就是联合索引的意思，联合索引是按照最左匹配原则进行存储的，按照这个递增的顺序进行改写sql语句可以优化回表。
+
+### 11.顺序IO和随机IO?
+
+顺序IO是数据在磁盘中存取是连续的，所以在进行IO操作的时候，读取到一个扇区后可以连续读取
+
+随机IO是数据在磁盘中存取在不同的扇区中，不连续的，所以在读取完一个扇区后，需要再次寻找该数据的另一个扇区
+
+这个在mysql的持久性和中体现，就是redolog 和 在缓存中的数据写回磁盘中的时候，redolog是顺序IO，缓存中的数据是随机IO
+
+### 12.MVCC的底层实现原理?
+
+MVCC是多版本并发控制，是用来解决脏读，不可重复读，幻读等问题,这些问题是在不同事务之间出现的，所以MVCC就是来保证隔离性的，MVCC实现了多个版本的数据可以共存，主要是依靠数据的隐藏列 和 undo log，数据的隐藏列包括数据的版本号，删除时间，指向undo log的指针等，从两个事务进行分析，在解决不可重复读的时候，会判断该数据的版本号是否和原来的一样，若不一样则回滚到原来的数据，解决了不可重复读。在进行解决幻读的时候，引入了间隙锁，在对数据进行标记的时候，不仅仅是对该数据，而是对该数据的一定范围进行标记，如果其他事务插入了数据并提交后，对于我这个事务，可以知道这个新插入的数据的版本号大于我之前标记的，所以用undo log进行回滚。
+
+### 13.ACID是底层实现原理?
+
+A:原子性的实现原理是利用undo log来实现的，对于数据库的修改操作都会存放到undo log中，如果事务执行失败了则利用undo log里面的信息进行回滚，undo log属于逻辑日志，记录的是sql的信息
+
+D都是利用redo log，在事务进行修改的时候，将缓存中的数据修改，同时记录在redo log中，当出现了宕机的时候，可以利用redo log来进行恢复，redo log日志和缓存中的数据都是需要写入磁盘中的，redo log使用的是顺序IO，缓存中的数据使用的是随机IO
+
+C是利用原子性和持久性，隔离性进行完成的，主要是保证数据库的完整性约束.
+
+I 是利用锁的机制或者利用MVCC来保证不同事务之间的干扰.
+
+### 14.B树和B+树的区别？为什么文件系统存储使用B+树
+
+B树是每一个节点都存放着索引和值，而B+树是只有叶子节点才存放着值，其他节点都是存放索引的，并且B+树的叶子节点用链表链接起来，为什么使用B+树是因为我们衡量一个数据结构作为磁盘中存储数据是越少的IO操作次数是越好的，B+树就是最符合的，树的高度小，IO操作少，而不是用B树就是B树的每一个节点都是存放着值的。不像B+树一样只有叶子节点才存放值，这样其他节点就能存放更多的索引。
+
+### 15.MySQL中时间是如何存储的？
+
+利用Year类型或者利用DateTime类型格式是年月日时分秒。
+
+### 16.B树的插入过程和删除过程？
+
+对于一个m阶的B树，每一个节点最多由m-1个数据，最少有m/2 - 1个,当插入的数据多于一个节点是就会分裂，当删除的数据少于最少个数时就会接兄弟来补，
+
+### 17.B+树的插入过程和删除过程？
+
+和B+树差不多，最大的不同就是节点不存放之，存放索引，叶子节点才存放数据
+
+### 18.Sql的执行过程？
+
+from ---join on---where---group by----avg,,sum-----having----select-----distinct----order by----limit.
+
+### 20.MySQL中定义表没有使用主键会怎样？
+
+1.没有使用主键，innodb会自动设置一个不可见的row_id,这个row_id存在一个全局的ROW_ID表中，并且这个row_id是占用6个字节的，并不是我们平常定义的int4个字节，如果没有定义主键，查询的效率旧低，需要进行全表扫描，并且这个ROW_ID是全局共享的，那么就会有并发问题。
+
+### 21.MySQL中inner join，left join ，right join区别？
+
+- inner join是将所有符合on条件的都查询出来，并成结果集
+- left join是以左边的表为主表，根据on查询的条件合并在主表中，没有的话值为null
+- right join是以右边的表为主表，根据on查询的条件合并在主表中，没有的话值为null
+
+## ---------------------------------------Spring-----------------------------------------------------
+
+### 1..spring,springmvc,springboot的区别?
+
+![image-20220208225839422](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20220208225839422.png)
+
+(spring是一个轻量级的java开发框架，核心是ioc和aop，springmvc是归属于spring的，是web层的开发框架，主要用于界面的渲染和路径的映射等等，springboot是为了简化spring中那些复杂的配置)
+
+###### 2.springmvc的工作流程
+
+![image-20220208231751147](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20220208231751147.png)
+
+(拿到用户的请求 ---- dispatcherServlet ---- handlerMapping -- handler -- handlerAdapter----- 执行后返回一个ModelAndView ----- dispatcherServlet进行解析后返回一个View对象-------进行渲染页面------响应给用户)
+
+### 3.spring的核心(ioc,aop,控制反转，面向切面编程，像一个大容器管理对象的生命周期，DI是依赖注入，一种实现，ioc的实现，ioc是一种思想)
+
+### 4.spring中aop的理解
+
+![image-20220210195525265](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20220210195525265.png)
+
+### 5.Spring中如何解决循环依赖的问题？
+
+spring解决循环依赖的是Bean的中间态这个状态，就是已经实例化但还没有初始化，和3级缓存，singletonObjects，earlySingletonObjects，singletonFactories.假设A类和B类互相依赖，然后实例化A类的时候首先将其加入singletonFactories中，然后进行初始化的时候发现需要B类，所以又去实例化B类，也将其加入到singletonFactories中，然后发现A在里面，所以B类能够初始化成功，将B类放到一级缓存中，同时将A类放到二级缓存中，最后再初始化A类的时候发现可以直接从一级缓存中获取B类，所以A类也能够成功的初始化，A类由二级缓存到一级缓存（注意缓存提升的时候需要，将原先所在的缓存中的对象删除掉）
+
+### 6.Autowired和Resource的区别
+
+Autowired是按照类型来进行注入的，若有多个相同的类型，可以用Qualifier注解指定名字
+
+Resource是java中的注解不是spring里面的，是按照名字来进行注入
+
+### 7.final修饰的类能否用aop?
+
+不能因为spring默认使用的是cglib动态代理，需要继承目标类，final修饰不能被继承.
+
+### 8.spring的bean的生命周期
+
+通过反射调用构造方法（spring默认去找无参构造）----实例化一个普通对象----进行属性依赖注入----执行一些Aware接口的方法如：setBeanFactory，setBeanName方法------执行BeanPostProcessor里面的初始化前方法-------初始前（@Postcontruct）----初始化(执行实现了@InitializingBean这个接口的方法--afterPropertiesSet) ----执行BeanPostProcessor里面的初始化后的方法（执行AOP逻辑包括事务）----  生成代理对象（默认使用cglib继承目标类，重新目标类的方法，进行aop的逻辑处理）---Bean
+
+### 9.BeanFactory和ApplicationContext的区别？
+
+ApplicationContext是继承BeanFactory的，BeanFactory是延迟加载来注入Bean的，就是说用到该Bean的时候才会注入，而ApplicationContext是刚开始就将所有的对象注入到IOC容器中，BeanFactory通常使用编程的方式创建，而ApplicationContext通常是通过读取配置文件进行创建。
+
+### 10.Spring中bean的作用范围？
+
+1.singleton，prototype，request，session，websocket。
+
+### 11.Spring中的单例bean是线程安全的吗？
+
+不是线程安全的，对于涉及bean状态的改变，也就是bean如果是有状态的，则不是线程安全的，例如bean中有一个变量count用来计数，如果只是调用普通的方法，那么就是线程安全的，因为同一个实例不同的线程来调用其方法，是将该变量进行拷贝到自己的工作内存中执行的所以是安全的，若把scope改成prototype则是安全的。
+
+### 12.BeanFactory和FactoryBean的区别？
+
+BeanFactory是管理Bean的工厂，而FactoryBean是让这个Bean更加的具有灵活性，通过getBean获取实现了FactoryBean接口的对象得到的不是实现类本身而是getObject里面的返回对象值，这可以做简单的工厂模式，若要得到实现类本身需要在getBean的时候添加一个&。
+
+### 13.Spring中的设计模式？
+
+1.单例模式，工厂模式（FactoryBean的时候使用， BeanFactory的使用也使用了）， 动态代理模式（AOP）, 观察者模式（ApplicationListener）。
+
+### 14.Spring中事务的实现方式？
+
+1.有基于TransactionProxyFactoryBean，通过自己在配置文件定义事务的代理类给要添加事务的方法进行配置。
+
+2.有基于@Transactional注解类型的，只需要配置事务管理器，启动事务注解即可。
+
+### 15Spring中事务的传播机制？
+
+1.REQUIRED：如果不存在当前事务，就新创建一个，若存在的话就加入。
+
+2.SUPPORTS: 如果存在当前事务，就加入，没有就以非事务的方式进行。
+
+3.MANDATORY：存在当前事务就加入，不存在当前事务就抛出异常。
+
+4.REQUIRES_NEW: 如果存在当前事务，那么会将该事务挂起，重新创建一个，就是各自执行各自的事务。
+
+5.NOT_SUPPORTED: 以非事务的方式执行，若存在当前事务则挂起当前事务。
+
+6.NEVER: 不使用事务，若存在当前事务则抛出异常。
+
+7.NESTED（嵌套）：父子事务，子事务抛出异常回滚，父事务可以选择处理，从而父事务不会回滚。
+
+### 16.Spring中事务失效场景？
+
+1.Spring中@Transactional修饰的方法不是public的
+
+2.Spring中在一个类的非事务方法去调用@Transactional修饰的方法，这是由于事务使用的是代理对象，继承原始类重写了@Transactional修饰的方法，开启事务，然后使用普通的父类进行调用的。
+
+3.事务抛出的不是RuntimeException。
+
+### 17.Spring中Bean的自动装配？
+
+在配置文件定义<bean>的时候有属性autowired，可以通过byType和byName等注入属性
+
+### 18.Spring中哪里运用了反射？
+
+- 使用IOC或AOP的时候，通过解析配置文件获得类的信息，创建对象
+- 扫描@Component注解，@Service注解等都需要用反射来判断
+- cglib动态代理的时候。
+
+### 19.JDK中哪些地方使用了反射？
+
+- JDK的动态代理。
+
+## ------------------------------Redis--------------------------------------
+
+### 1.rdb和aof
+
+![image-20220210205209599](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20220210205209599.png)
+
+![image-20220210205203521](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20220210205203521.png)
+
+### 2.Redis中键的清楚策略(惰性过期和定期过期)
+
+![image-20220210210317565](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20220210210317565.png)
+
+### 3.Redis中为什么单线程快（业务逻辑，内存，io多路复用，cpu的切换）
+
+![image-20220210221523950](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20220210221523950.png)
+
+### 4.缓存雪崩，穿透，击穿
+
+一个是指大面积失效导致访问数据库，一个是指缓存和数据库都没有，击穿是指一个热点key被大量访问，但是失效了
+
+设置不同的过期时间，避免同时失效，还有就是数据的预热，对于数据库中没有的返回一个key-null，设置热点key永不过期.
+
+### 5.Redis中事务（mutil开启，注意回滚，语法错误和运行时错误，例如字符串incr）
+
+### 6.Redis中数据类型(String, hash, list, set , zset)
+
+hash是key -- （key，value） list一个双端队列，zset可以添加一个排序字段
+
+### 7.redis中各类型的使用场景?
+
+string:用于点赞，incr key， 用于分布式锁 set key ex 10 nx
+
+hash用于简单版的购物车，hset userId 333330 1 ---这个用户对应的订单id的数量
+
+全选hlen userId
+
+list：用于微信公众号推送内容，例如有两篇文章id分别为10， 11， 我这个用户的id为userId 
+
+lpush userId 10 11
+
+set :用于微信小程序抽奖，sadd wupingId 1 2 3 4 ----物品Id，当前抽取的用户编号加进来 srandmember wupingId count随机弹出count个元素
+
+用于微信朋友圈点赞，sadd msgId 1 2 3 4 -- 该消息，点赞的用户编号 获取所有点赞的用户smembers msgId
+
+scard key获取元素个数
+
+spop key 随机弹出一个元素，并删除
+
+用于共同关注 利用集合运算，sinter k1 k2交集
+
+zadd的使用可以作为排行版 zadd msgSort 1 1001 10 1002 定义消息排行版msgSort 编号为1001的消息热度为1
+
+ zincrby msgSort 2 1001 给1001消息热度增加2，zrange msgSort 0 10 withscores 进行排行输出
+
+### 8.redis中的分布式锁？
+
+对于加锁利用setnx，注意需要加锁和设置过期时间得是一个原子操作，对于解锁也需要是一个原子操作，可以利用lua脚本或者使用redis中的事务进行解决.,利用事务来解决主要是由于业务超长，导致锁过期，然后其他线程进来，就可分为把锁抢占然后原先的线程删除锁不是自己的。
+
+```java
+public String buyGoods() {
+    String value = UUID.randomUUID().toString() + Thread.currentThread().getName();
+    try {
+        Boolean flag = template.opsForValue().setIfAbsent(REDIS_LOCK, value, 10, TimeUnit.SECONDS);
+        if (!flag) {
+            return "抢锁失败";
+        }
+        String s = template.opsForValue().get("goods");
+        Integer goodsNum = Integer.valueOf(s);
+        if (goodsNum > 0) {
+            Integer realNum = goodsNum - 1;
+            template.opsForValue().set("goods", String.valueOf(realNum));
+            System.out.println("购买成功，======"+ realNum +"======= 端口号为" + port);
+        } else {
+            System.out.println("购买失败，============= 端口号为" + port);
+            return "购买失败，============= 端口号为" + port;
+        }
+        return "购买失败，============= 端口号为" + port;
+    } finally {
+        while (true) {
+            template.watch(REDIS_LOCK);
+            if (template.opsForValue().get(REDIS_LOCK).equalsIgnoreCase(value)) {
+                template.setEnableTransactionSupport(true);
+                template.multi();
+                template.delete(REDIS_LOCK);
+                List<Object> list = template.exec();
+                if (list == null) {
+                    continue;
+                }
+            }
+            break;
+        }
+    }
+}
+```
+
+### 9.redis中的缓存清除策略
+
+有定时清除，惰性清除，定期清除，---8种实现，默认为noeviction 从所有的key和过期的key两个维度
+
+### 10Redis的底层数据库设计？
+
+底层实际上是一个HashTable，每一个记录是一个Entry，每个Entry里面有k，v，next。插入数据先求hash（key）% table长度，找到索引位置，利用头插法。当hashtable所存放的值达到阈值之后会进行扩容为原来的两倍，然后进行rehash，将原先的数据进行重新求hash值放置到新的table中，这个过程采用渐进式来实现，渐进式就是说不是全部的一下子把旧的table中的entry都放置到新的上面，一点一点的来。
+
+### 11.Redis的String类型的设计？
+
+利用sds这种结构体来实现，避免了c语言中""字符串\0的影响，使用了len来作为sds中char[]类型字符串的结束标记，同时通过free来判断剩余char[] 数组的空间，用于扩容，减少重新分配数组的次数，直接追加即可。扩容时为原来数组长度的两倍。
+
+### 12.Redis中的跳表设计？
+
+跳表就是将原始的链表数据，进行抽取出索引，再索引的基础上再次抽取，类似于B树，
+
+1------3------5
+
+1 --2--3--4--5--6
+
+查询的时间复杂度是O(logn)
+
+### 13.Redis中value的数据结构？
+
+使用redisObject来进行里面有 type（string，set这些命令操作） encoding（实际的编码类型例如int，embstr） 等等。
+
+### 14.Redis数据中的bitmap操作命令？
+
+setbit key offset 0|1   key表示一个二进制的序列随便取
+
+getbit key offset
+
+bitcount key统计key代表的序列有多少个1
+
+### 15.为什么使用Redis作为分布式锁？
+
+- Redis是基于AP原则，是高可用和分区容错性，高可用体现在主从复制的时候使用的是异步的方式，也就是向所有服务器发送rdb文件是异步的。
+- Redis是基于内存的操作，速度快，单线程实现IO多路复用模型，减少多线程带来的上下文切换。
+- 数据的存储是基于HashTable的结构。
+
+### 16.Redis中的集群节点宕机导致分布式锁的失效？
+
+- 使用zookeeper来解决这个问题，zookeeper本来就是基于CP理论的，即一致性和分区容错性，zookeeper不像redis一样写入数据立刻返回给用户，而是等到超过一半的从节点都得到数据的拷贝之后，再返回给用户。
+- RedLock，使用RedLock锁后写入数据的时候同时给从节点写入数据，当超过一半的重节点都写入数据后才给用户返回完成。
+
+## -------------------------------------------计算机网络---------------------------------
+
+### 1.tcp和udp区别
+
+![image-20220212193031457](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20220212193031457.png)
+
+### 2.OSI七层网络模型以及每一层的功能
+
+物理层:实现不同计算机节点直接的比特流传输(轮船，飞机)
+
+数据链路层:对物理层传输过来的比特流进行差错检查，将不可靠的物理线路转换成可靠的数据链路（相当于内部操作）
+
+网络层:将数据链路层传输过来的数据转化成数据包，通过路由实现不同网络之间的通信(集散中心)
+
+传输层：为用户提供可靠的传输和不可靠的传输(找快递公司)
+
+会话层:为两个不同的设备进行建立会话，进行数据交换(秘书)
+
+表示层:进行编码和加密(中英文转换)
+
+应用层：为用户提供操作接口(用户)
+
+### 3.http协议中的get和post区别?
+
+http是基于tcp协议的，get和post也是基于tcp协议的，本质上是没有区别的，只不过在http的规则下导致了在应用的过程中体现出了不同，例如一个需要请求体，一个需要在url上进行带参数
+
+#### 4.浏览器输入uil会发生什么
+
+1.解析域名(浏览器缓存，系统缓存，路由缓存，递归调用根域名服务器)
+
+2.得到Ip找到服务器建立TCP连接
+3、发送http请求
+
+4、服务器进行处理，返回数据，关闭连接四次挥手.
+
+### 5.TCP/IP协议分层模型以及每层的协议
+
+1.网络接口层:传输真实的数据（PPP）
+
+2.网络互联层:进行不同网络间的寻址(ARP)
+
+3.传输层
+
+4.应用层
+
+### 6.DNS解析过程
+
+用户发送请求---本地域名服务器---根域名服务器---返回一个顶级域名服务器的地址----本地域名服务器拿到这个地址去找顶级域名服务器----顶级域名服务器查到Name Server的地址返回给本地域名服务器----本地域名服务器拿到地址去查Name Server服务器找到映射的IP进行返回。
+
+### 7.TCP四次挥手中为什么需要Time_Wait, 
+
+客户端发起释放连接fin=1，然后服务端给客户端发回确认送到释放请求，然后服务端才真正开启释放来连接fin=1，这个时候也就是第三次挥手的时候，若服务端没有发过来释放请求，那么客户端就无法发送确认，需要有一个 超时等待的过程，等待服务端超时重传，所以需要Time_wait..
+
+### 8.http1.0、1.1、2.0，3.0的区别
+
+1.0是一次TCP连接发送一次http请求，
+
+1.1是长连接，一次TCP连接发送多个http请求，然后在头部加入了host头（这是由于虚拟机的存在）
+
+2.0是在1.1基础之上实现多路复用，可以并发的发送http请求，压缩了头部信息
+
+3.0是解决2.0的TCP阻塞问题，使用了UDP协议，更好的进行网络切换。
+
+### 9.**TCP三次握手，丢包如何解决**？ 
+
+TCP在发送数据的时候会启动定时器，发送数据包后在一段时间内没有收到目标机器的ACK确认号则进行超时重传
+
+### 10.TCP拥塞控制详细说一下?
+
+首先在发送方有一个拥塞窗口cwnd = 1，每收到接受方发回来的ACK，cwnd++，每收到一个就自增一，拥塞窗口变大了，发送的数据包也多了，所以刚开始是一个慢开始的过程，呈指数增长，然后到达了阈值ssthresh，慢开始算法就变成了拥塞控制算法，拥塞控制算法呢就是不管接受方给我发回来多少的ACK，我只让cwnd++，这里就由指数增长变成了线性增长，然后当发生了超时重传，就将阈值变成此时窗口的一半，然后cwnd = 1，重新开始慢开始算法，这样的效率就低，原因是一发生超时重传就重新进行慢开始，所以引入了快重传机制，当发送方连续收到接受方发送的上一个数据包的确认号的时候，此时就立马重传该数据包，而不是等到超时重传。
+
+### 11.Https的解析过程？
+
+客户端发送请求，连接服务器的443端口，然后服务器将自己的公钥以证书的形式发送回客户端，客户端就验证这个证书的合法性，验证合法后，客户端就利用服务器端的公钥将客户端自己的私钥client key进行加密进行传输到服务器端，服务器端看到有数据是用我自己的公钥加密的，那么就使用自己的私钥进行解密得到client key， 那么就开始进行对称加密进行传输数据了。https使用了证书验证，非对称加密，对称加密。
+
+### 11.UDP非要建立connect，怎么执行？
+
+1.首先udp的数据报套接字是可以发送给任意的接受方的，并且可以从任意的发送方发送来的数据的，但是我们要发送给指定的接受方，可以使用connect（），这个connect方法不是建立连接的，udp是无连接的，而是指定特定的发送方。
+
+### 12.ARP协议？
+
+在局域网中，由于以太网协议的规定，两台主机进行通信必须知道对方的MAC地址，但是对于网络层和传输层而已不关心这个MAC地址，只关心目标主机的IP地址，然后传输层将IP数据报交给了数据链路层，所以需要一种机制，将IP地址转化成MAC地址，就有了ARP协议，首先源主机先在自己的ARP缓存中找目标主机的MAC地址，找到就直接发送MAC帧，找不到则进行广播，目标主机就进行响应给发送方响应MAC地址，然后将数据封装成MAC帧进行发送。若是不同局域网，则进行路由（发送方得到的响应是路由的MAC地址）。
+
+### 13.TCP三次握手？
+
+客户端发送数据包，里面的标记为SYN = 1，序号Seq假设为a，服务端收到了这个数据包，就给客户端发送一个确认收到，里面数据包的标志位SYN=1，ACK=1，同时发送回自己的序号k和ack = 之前的序号+1,这个小写的ack时客户端期待收到的下一个报文的序号。然后客户端收到确认信息后，给服务器发送确认我收到了，数据包的标志位ACK = 1，同时发送一个服务器端期待收到的下一个报文序号即小写的ack = k + 1。
+
+### 14协程是什么？
+
+- 协程是一个比线程更加轻量级的存在，不是由操作系统内核所管理的，是由用户程序来进行管理的，是在用户态执行的，这样的好处就是性能提升，协程是在一个线程中的。
+
+### 15.Cookie和Session的区别？
+
+- Session是保存在服务器端中的，Session中的主要信息都保存在服务器端，在客户端只存放SessionId，而SessionId是存放在客户端的Cookie中的，当每次客户端发送页面请求，都会把Cookie发给服务器端，为的就是要发送SessionId给服务器端进行验证当前用户的信息。
+- Cookie是保存在客户端的磁盘上的，用来存放用户的信息和服务器端发送过来的SessionId
+
+### 16.Cookie被禁用后的解决方法？
+
+- Cookie被禁用后，我们还是需要传SessionId给服务端的，所以我们可以利用重写URL，将SessionId放到URL上面，或者说使用一个隐藏域，提交表单的方式等等。
+
+### 17.如何预防XSS攻击
+
+- 在web页面可以对用户可以输入的地方进行过滤，或者转义。
+- 在后台输出页面的时候，也需要进行过滤或者转义
+- 使用Apache中的commons-lang.jar 。
+
+### 18.TCP握手为什么要三次？不是两次？
+
+- 如果是两次的话，假如第一次客户端发送连接请求给服务器端，但是由于网络的阻塞没有发送过去，客户端一看没有收到服务器端发送回来的确认标记ACK，就进行了重传，然后呢和服务器端建立起了连接传输数据结束，完了之后在网络中阻塞的请求连接到达了服务器端，但是此时客户端和服务器端的连接是断开的，所以服务器端收到了连接请求，然后给客户端发回确认收到标记ACK，此时的客户端的状态不是发送状态，导致了脏连接。
+
+## -------------------------------------------操作系统-------------------------------------------
+
+### 1.用户态和核心态的区别，用户态如何切换到内核态
+
+计算机有两种程序，一种是应用程序，一种是系统程序，为了防止应用程序干扰到系统程序，所以分为了用户态和核心态，用户程序只能运行在用户态，进程访问的内存空间有限，并且该进程所占用的处理机是可以被抢占的，核心态运行系统程序，进程访问的内存空间不受限，该进程所占用的处理机是不可以被抢占的。
+
+从用户态到核心态--中断，系统调用，异常。
+
+### 2.进程间的通信方式
+
+有名管道：得到名字和权限可以在不同的进程之间进行通信，本质都是内核的缓冲区
+
+无名管道：只能在父子进程之间进行通信，都是半双工通信，数据只能从一边流向另一边
+
+管道，消息队列的本质都是内核的缓冲区
+
+消息队列和管道的区别就是，消息队列中会给每一个数据进行指定特定的类别，然后接受方可以按照类别进行接受，而不是像管道那样什么都进行接受
+
+最快的通信方式是共享内存，因为没有设计内核的拷贝.
+
+### 3.BIO, NIO, AIO的区别
+
+BIO：同步阻塞,会阻塞当前线程，直到IO操作完成，烧水监听一个水壶, 适用于连接数少且固定的应用
+
+NIO: 同步非阻塞：利用一个线程不断轮询每一个IO操作判断其是否完成，不断轮训水壶,适用连接数多且轻操作
+
+AIO: 异步非阻塞:IO操作完成后会通知相应的线程去执行操作，相当于给水壶添加了报警器，适用于连接数量多，重操作.
+
+### 4.select, poll, epoll的区别
+
+当客户端呢连接上网络服务器后，每一个客户端都有一个文件描述符fds，对于select函数，首先将所有的fds存放到rset集合重，rset本质上就是一个bitmap，然后呢将这个rset集合中的元素从用户态拷贝到内核态，在内核态进行判断那些fds有数据，然后进行标记，select解除阻塞后，进行循环遍历，在所有fds中找到标记的fds进行读取数据，select的缺点就是用了bitmap 其是1024位，然后rset不能复用，需要进行用户态到内核态数据的拷贝，需要进行循环遍历找到标记的fds读取数据（多路复用就是利用一个单线程来监听多个socket，哪个socket有数据就从里面读取数据，select，poll，epoll就是具体的实现）
+
+poll:使用了pollfds结构体，结构体中主要有fd，event，revent，其不在使用rset，并且pollfds是可以复用的，其也是需要进行从用户态到内核态的数据拷贝，然后也是需要进行循环找到标记的fds进行读取数据
+
+epoll ： 首先使用epoll_create在内核中创建了一块区域，然后调用epoll_ctl将fds注册到该区域中，该区域使用红黑树进行维护，然后在调用epoll_wait监听到有数据的fds，将有数据的fds放到一个链表中进行维护，最后返回的是链表前面有数据的fds，减少了全部的fds的遍历，对select和poll进行优化。
+
+##### 5.虚拟内存:
+
+在没有虚拟内存之前，给进程所分配的都是物理内存，假如给每一个进程分配4g的内存大小，那么多个进程一下子就把物理内存消耗完了，其他进程要想运行，就必须等待物理内存的释放，所以引入了虚拟内存，虚拟内存呢就是说进程需要多少内存，我就给你分配多少内存，只不过是虚拟的，例如该进行需要4g的内存，我就给你分配4g的虚拟内存，这仅仅是进程看起来得到了4g的虚拟内存，而且是一段连续的地址空间，但是实际上该进行得到的物理内存只是很少的一部分，就是你用多少我才给你分配多少物理内存，那么虚拟内存到物理内存的映射就需要通过页表来实现，相关的就有页面置换算法，FIFO，LRU等。
+
+### 6.进程调度有那些算法？
+
+- 先来先服务：顾名思义，先来的进程优先获得处理机的执行。执行时间长，后面的就一直等待
+- 短作业优先：服务时间短的先执行。缺点就是长作业可能得不到执行
+- 优先级调度：进程优先级越高的话，越能抢到处理机的执行，又分为抢占式和非抢占式，优先级高的可以抢占优先机低的。
+- 高响应比的调度，服务时间 / (等待时间+服务时间)高的先执行。
+- 时间片轮转的方式
+- 多级反馈队列：有多个就绪队列，每个队列都有不同的优先级，并且每一个队列中的进程执行的时间片也不同，只有当优先级高的队列是空闲的，优先级低的队列才会执行，对于每一个队列是执行先来先服务的，但是时间片不同，所以长作业在该时间片没有执行完会进入下一级队列中，下一级队列的时间片变大了，所以可能会执行完。
+
+### 7.Linux中进程的调度算法？
+
+- 利用CFS（完全公平的调度算法）：核心思想就是让每个调度实体的vruntime相互追赶，最终以相同的速率增长，vruntime增长越小的，说明权重越大，获得更多的CPU执行时间,完全公平体现在vruntime上，是以相同的速率增长的。并且调度实体使用红黑树进行管理的。
+- 红黑树：是平衡树的一种，特点就是节点颜色只有红色和黑色。
+- 根节点和叶子节点都是黑色，红色节点的孩子是黑色。
+- 任意节点到达叶子节点路径上的黑色节点个数相同。
+
+### 8.进程间的同步方式？
+
+- 信号量：通过pv操作
+- 利用管程：管程就是一个或多个过程，和局部数据组成的软件模块，管程中的变量只能在管程中进行访问，外部访问不了，利用这个特性，定义条件变量实现同步
+- 消息传递
+
+### 9.磁盘调度算法？
+
+- 先来先服务算法：根据进程的请求来进行磁盘IO，这样可能导致寻道时间长，降低设备服务性能。
+- 最短寻道时间算法: 根据当前磁头指向的磁道距离最近的先进行处理，可能导致距离该磁头远的得不到处理
+- 扫描算法：通过不断的移动磁头，由里向外，由外向里，依次执行，这样导致两侧的响应低于中间的。
+- 循环扫描算法，也是移动磁头，由里向外，到达外边之后立马就回到开始的位置，而不是再次循环回来。
+
+## ------------------------------RabbitMQ---------------------------------
+
+### 1.消息的可靠性（消息丢失，消息重复，消息积压）
+
+消息丢失：做好容错机制，消息传输失败后重试，做好日志记录，例如加一个消息记录表，利用发送方的回调机制，到Broker，和Exchange到Queue做好失败后回调。对于接受方需要开启手动确认机制。
+
+消息重复：对于每一个消息都应该有唯一的表示，处理过就不用处理了，比如库存有工作单的标志，每个消息都有一个redelivered的字段，判断该消息是否重复消费过。
+
+消息积压：这个只能设置多个消费者。
+
+### 2.Rabbitmq中消息是基于什么传输的？
+
+消息是基于信道传输的，信道是建立在真实的TCP连接上的，而且每条TCP上的信道是没有限制的，之所以采用信道的方式来进行传输数据，是因为TCP的连接和销毁太消耗资源了。
+
+### 3.RabbitMq中的消息是怎样分发？
+
+消息是通过轮询的方式向订阅这个队列的消费者进行发放，并且不同的交换机有不同的分发消息特点，有fanout，direct，topic等。
+
+### 4.使用RabbitMq的优点是？
+
+应用解耦，流量的控制，用于延时队列，异步通信。
+
+### 5.RabbitMQ的缺点？
+
+使系统的复杂度变高，因为导入了MQ就要考虑这个消息的丢失，消息的重复消费等问题。
+
+系统的可用性变低，就本来ABCD接口是正常的，引入了MQ后，若是MQ宕机了，系统就崩了。
+
+## ------------------------------------------Linux-------------------------------
+
+### 1.Linux的编译与执行（gcc + ./文件.out      linux中.out是可执行文件）
+
+### 2.top命令查看cpu的利用率.
+
+## ------------------------------------设计模式-----------------------------------
+
+### 1.单例模式：主要解决一个全局使用的类频繁的创建和销毁，当想要控制实例的数量以及节省资源的时候使用
+
+### 2.简单工厂模式
+
+```java
+/**
+ * 简单工厂模式 ：类的创建依赖于工厂类，若要增加其他类，必须对工厂类进行代码的修改
+ */
+interface Mouse {
+    public String getMouse();
+}
+class LenoveMouse implements Mouse {
+
+    @Override
+    public String getMouse() {
+        return "联想鼠标";
+    }
+}
+class HPMouse implements Mouse {
+
+    @Override
+    public String getMouse() {
+        return "惠普鼠标";
+    }
+}
+class MouseFactory {
+    public static Mouse getLenoveMouse() {
+        return new LenoveMouse();
+    }
+    public static Mouse getHPMouse() {
+        return new HPMouse();
+    }
+
+    public static void main(String[] args) {
+        System.out.println(MouseFactory.getHPMouse().getMouse());
+    }
+}
+```
+
+### 3.工厂方法模式
+
+```java
+/**
+ * 工厂方法模式 : 创建了工厂的接口，让不同的类去实现他们自己的工厂，若增加功能，直接增加新的工厂类即可，不需要修改 之前的代码.
+ */
+interface Mouse {
+    public String getMouse();
+}
+class LenoveMouse implements Mouse {
+
+    @Override
+    public String getMouse() {
+        return "联想鼠标";
+    }
+}
+class HPMouse implements Mouse {
+
+    @Override
+    public String getMouse() {
+        return "惠普鼠标";
+    }
+}
+interface Factory {
+    public Mouse getMouse();
+}
+class LenoveFactory implements Factory {
+    @Override
+    public Mouse getMouse() {
+        return new LenoveMouse();
+    }
+
+    public static void main(String[] args) {
+        Factory factory = new LenoveFactory();
+        System.out.println(factory.getMouse().getMouse());
+    }
+}
+class HPFactory implements Factory {
+    @Override
+    public Mouse getMouse() {
+        return new HPMouse();
+    }
+}
+```
+
+### 4.抽象工厂方法模式
+
+```java
+/**
+ * 抽象工厂方法模式 : 和工厂模式不同点就是有多个类型的接口聚合在工厂接口中，从而实现不同的产品。
+ */
+interface Mouse {
+    public String getMouse();
+}
+interface KeyBoard {
+    public String getKeyBoard();
+}
+class LenoveKeyBoard implements KeyBoard {
+    @Override
+    public String getKeyBoard() {
+        return "联想键盘";
+    }
+}
+class HPKeyBoard implements KeyBoard {
+    @Override
+    public String getKeyBoard() {
+        return "惠普键盘";
+    }
+}
+class LenoveMouse implements Mouse {
+
+    @Override
+    public String getMouse() {
+        return "联想鼠标";
+    }
+}
+class HPMouse implements Mouse {
+
+    @Override
+    public String getMouse() {
+        return "惠普鼠标";
+    }
+}
+interface Factory {
+    public Mouse getMouse();
+    public KeyBoard getKeyBoard();
+}
+class LenoveFactory implements Factory {
+    @Override
+    public Mouse getMouse() {
+        return new LenoveMouse();
+    }
+
+    @Override
+    public KeyBoard getKeyBoard() {
+        return new LenoveKeyBoard();
+    }
+
+    public static void main(String[] args) {
+        Factory factory = new LenoveFactory();
+        System.out.println(factory.getKeyBoard().getKeyBoard());
+    }
+}
+class HPFactory implements Factory {
+
+    @Override
+    public Mouse getMouse() {
+        return new HPMouse();
+    }
+
+    @Override
+    public KeyBoard getKeyBoard() {
+        return new HPKeyBoard();
+    }
+}
+```
+
+## --------------------------------------------------------springboot-----------------------------------------
+
+### 1.springboot的自动配置原理?
+
+启动类的@SpringBootApplication里面的@EnableAutoConfiguration注解，利用@Import导入了AutoConfigurationImportSelector类，里面有个方法getCandidateConfigurations，就去每一个jar包的META -INF下的spring.factories找需要自动配置的类 ，将其放到抽象工厂SpringFactoriesLoader里面，也就是利用了抽象工厂方法模式，由各自的工厂子类去创建Bean并放到容器中。
+
+### 2.@Import 注解就是导入普通类，Configuration修饰的类，ImportSelector修饰的类，ImportBeanDefinitionRegistrar注解的类，将其导入到spring的容器中
+
+### 3.@Configuration注解的类会生成代理对象，而不是普通对象。
+
+### 4.Springboot和Springcloud的区别?
+
+Springboot是基于spring的一套快速开发的脚手架，可以快速开发一个微服务，SpringCLoud是基于SpringBoot的，一套云应用的开发工具，SpringCLoud是依赖于SpringBoot的，SpringBoot关注于单体应用，SpringCloud关注于全局的微服务治理方案。
+
+## ---------------------------------------------------SpringMVC-------------------------------------------------------
+
+### 1，spingmvc中的九大组件
+
+1.HandlerMapping, 用来找到handler的，就是控制器，在controller层
+
+2,HandlerAdapter,由于handler的具体表现形式有很多，可以是类或者是方法，所以需要适配器
+
+3.HandlerExceptionResolver:处理异常的
+
+4.ViewResolver：用来将视图名字解析成View类型的视图
+
+5.RequestToViewNameTranslator: 用的handler没有返回名字，所以需要从request中拿
+
+6.LocaleResolver：对不同区域的用户显示不同的结果.
+
+7.ThemeResolver: 主题解析的
+
+8.MultipartResolver ：上传文件。
+
+9。FlashMapManager：用来处理重定向的。
+
+### 2.实现@RequestMapping注解？
+
+- 自定义RequestMapping注解类
+- 创建一个Controller类，使用我们自定义的RequestMapping注解类进行路径映射
+- 利用反射机制去扫描这个类，获取这个类中的方法，调用isAnnotationPresent来判断这个方法上是否有RequestMapping。然后获取这个注解中的值也就是路径，设置一个map集合，将路径和方法映射在一起。
+- 使用LocalVariableParameterNameDiscover获取方法的参数，然后判断和前端传来的参数名是否一样，一样就设置
+- 最后利用方法method.invoke()去实例化Controller对象调用并将获得的参数传入执行。
+
+## -----------------------------------------------SpringCLoud----------------------------------------------------------
+
+### 1.服务熔断和降级？
+
+- 服务熔断是对于服务端来说的，服务端的微服务注册进注册中心，在各个微服务进行调用的过程中可能出现异常或者长时间未响应，这就需要给用户快速的响应。
+- 服务降级是对于客户端来说的，服务降级是对于消费端来说的，当系统的资源不够用了，可以停掉一些微服务，保证核心的业务执行，也就是说在消费端的微服务进行熔断。
+- 说的通熟一点就是熔断在客户端和服务端的使用，有一种机制就是失败了去调用另一个方法。
+
+## ------------------------------------------------------------------算法-------------------------------------------------------
+
+### 1.桶排序和计数排序的区别？
+
+- 桶排序：是将每个桶的大小给一定的范围，然后将数据放入桶中，对桶里面的数据要做到有序，然后遍历桶。桶的内部利用快排，桶的范围 = （最大值 - 最小值） /  (个数 - 1)
+- 计数排序：将数据映射到数组的下标进行，对于每一个数字映射到其对应的下标后，让数组该下标对应的值++，然后遍历数组，值为下标，数量为数组值即 （即有多少个这种下标）。数组的大小 = （最大值 - 最小值 + 1）。
+
+## ------------------------------------------------------项目问题---------------------------------------------------------
+
+### 1.个人博客系统
+
+- 使用SpringBoot+Thymeleaf+Redis+Semantic-ui等实现了个人博客系统，并购买阿里云服务器进行部署www.yeidea.top,在该博客系统中使用了Redis进行了对首页数据的缓存，加快了访问，并使用了异步编排和线程池进行对代码的优化，使用了阿里云的对象存储服务进行了图片的存储。
+
+- 项目中使用了线程池配合java8中的工具CompletableFuture进行异步编排
+- 后端的编辑器使用了Markdown插件
+
+### 2.分布式电商项目
+
+- 使用SpringCloud + Nacos + Gateway + Redis等实现了一个电商项目，在该项目中利用了分布式锁Redisson和SpringCache解决了分布式系统下的缓存不一致问题,使用nginx进行反向代理和动静分离，使用RabbitMQ解决了库存与订单直接的内容不一致问题，并保证了消息的可靠性传输。
+- 使用了SpringSession解决了，Session在分布式系统下无法共享的难点，其原理是将session不存放到服务器的内存中，而是存储到了redis的缓存中，然后再给客户端发送一个令牌，就类似于之前我们把Session存储再服务器端后，然后给客户端发送一个JSessionId一样，只不过这次是发送Session。然后再修改这个令牌的作用于domain，使其在不同的服务器上面能够共享。
+
+### 3.抽奖系统
+
+- 使用SpringBoot+Redis+Mybatis-plus+MySQL+Shiro以及支付宝沙箱实现了一个抽奖项目，在项目中利用了Shiro进行了登录和授权，使用Redis的锁对抽奖功能的并发控制，使用支付宝沙箱模拟支付后抽奖，利用Redis的缓存功能对每个用户的日抽奖数进行了限制。
+- 如何对中奖物品的概率进行设计，先在数据库中给每一个物品设置一个概率，比如0.01，然后将这些物品从数据库中查出来，我就设置一个很大的数，比如十亿，然后我进行区间映射，把这个十亿进行划分区间，一等奖我就根据这个物品的概率给他映射到1-100，二等奖给他映射到101-1000，三等奖映射到1001 ---10000，。。六等奖就变成了100000 -----100000000这样子。
+- 数据库的表 活动实体lottery，几等奖实体lottery_item, 几等奖对应的物品lottery_prize, 活动记录表 lottery_record。
+- 抽奖开始前先利用CountDownLatch把奖品加载到缓存中才进行抽奖。
+- 在返回值的时候，有可能用户没有抽到奖品，或者抽到了普通奖品，唯一性奖品等不同类型的奖品，所以使用抽象方法模式，创建一个抽象的返回类，然后让子类继承他，实现了返回值的不同。
+
+### 4.多人在线群聊系统
+
+- 利用SpringBoot + WebSocket + Mybatis-plus + RabbitMQ + Shiro等实现了在线聊天室，包括私聊和群聊，利用RabbitMQ进行存放消息进行广播实现群聊功能,前端利用WeSocket进行消息监听和发送,和服务器端进行交接实现私聊。并且利用RabbitMQ实现的广播功能进行好友的上下线通知。
+- 项目中使用了一个ConcurrentHashMap来保存用户以及他对应的sessoin，保存起来，并且使用AtomicInteger来进行统计上线人数。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
